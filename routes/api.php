@@ -21,13 +21,6 @@ Route::middleware('auth:sanctum')->group(function () {
     Route::get('/dashboard/stats', [DashboardController::class, 'stats']);
 });
 Route::middleware('auth:sanctum')->get('/companies/export', [ExportController::class, 'export']);
-Route::post('/debug-echo', function (\Illuminate\Http\Request $request) {
-    return response()->json([
-        'all' => $request->all(),
-        'raw_content' => $request->getContent(),
-        'content_length_header' => $request->header('Content-Length'),
-    ]);
-});
 Route::post('/register', [AuthController::class, 'register'])->middleware('throttle:3,1');
 Route::post('/login', [AuthController::class, 'login'])->middleware('throttle:5,1');
 Route::middleware('auth:sanctum')->get('/companies/search', [CompanySearchController::class, 'search']);

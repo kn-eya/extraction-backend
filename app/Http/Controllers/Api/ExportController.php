@@ -32,9 +32,17 @@ class ExportController extends Controller
             'lon' => 'nullable|numeric|between:-180,180',
             'rayon' => 'nullable|numeric|min:5|max:100',
             'format' => 'nullable|string|in:csv,json,xml,sql,excel',
+            'limit' => 'nullable|integer|min:1|max:50000',
         ]);
 
+        $user = $request->user();
+
+        if (! $user || ! $user->hasAnyRole(['admin', 'professionnel'])) {
+            abort(403, 'Vous n\'avez pas les droits pour exporter des données.');
+        }
+
         $format = $validated['format'] ?? 'csv';
+        $limit = $validated['limit'] ?? 5000;
 
         $query = Company::query()->where('statut', 'actif');
 

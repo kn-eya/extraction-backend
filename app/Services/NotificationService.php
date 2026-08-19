@@ -60,6 +60,12 @@ class NotificationService
             ->where('email', '!=', '')
             ->get();
 
+        if ($admins->isEmpty()) {
+            Log::warning('Aucune notification envoyée : aucun utilisateur avec le rôle admin.');
+
+            return;
+        }
+
         foreach ($admins as $admin) {
             try {
                 /*

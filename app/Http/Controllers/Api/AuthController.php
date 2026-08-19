@@ -20,6 +20,7 @@ class AuthController extends Controller
             'name' => 'required|string|max:255',
             'email' => 'required|string|email|max:255|unique:users',
             'password' => 'required|string|min:8|confirmed',
+            'role' => 'nullable|string|in:admin,professionnel,utilisateur',
         ]);
 
         $user = User::create([
@@ -28,12 +29,13 @@ class AuthController extends Controller
             'password' => Hash::make($validated['password']),
         ]);
 
-        $user->assignRole('admin');
+        $role = $validated['role'] ?? 'utilisateur';
+        $user->syncRoles($role);
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
         return response()->json([
-            'user' => $user,
+            'user' => $user->load('roles'),
             'roles' => $user->getRoleNames(),
             'token' => $token,
         ], 201);
