@@ -22,7 +22,21 @@ class NotificationController extends Controller
     }
 
     /**
+     * GET /api/notifications/unread-count
+     * Nombre de notifications non lues pour l'utilisateur connecte.
+     */
+    public function unreadCount(Request $request)
+    {
+        $total = AppNotification::where('user_id', $request->user()->id)
+            ->where('lu', false)
+            ->count();
+
+        return response()->json($total);
+    }
+
+    /**
      * PATCH /api/notifications/{id}/lue
+     * POST /api/notifications/{id}/read (alias frontend)
      * Marque une notification comme lue.
      */
     public function marquerLue(Request $request, int $id)
@@ -34,5 +48,18 @@ class NotificationController extends Controller
         $notification->update(['lu' => true]);
 
         return response()->json($notification);
+    }
+
+    /**
+     * POST /api/notifications/mark-all-read
+     * Marque toutes les notifications de l'utilisateur connecte comme lues.
+     */
+    public function markAllRead(Request $request)
+    {
+        AppNotification::where('user_id', $request->user()->id)
+            ->where('lu', false)
+            ->update(['lu' => true]);
+
+        return response()->json(['success' => true]);
     }
 }

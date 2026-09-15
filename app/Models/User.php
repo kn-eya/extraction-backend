@@ -1,5 +1,7 @@
 <?php
+
 namespace App\Models;
+
 // use Illuminate\Contracts\Auth\MustVerifyEmail;
 use Database\Factories\UserFactory;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
@@ -12,6 +14,7 @@ class User extends Authenticatable
 {
     /** @use HasFactory<UserFactory> */
     use HasFactory, Notifiable, HasRoles, HasApiTokens;
+
     /**
      * The attributes that are mass assignable.
      *
@@ -22,6 +25,7 @@ class User extends Authenticatable
         'email',
         'password',
     ];
+
     /**
      * The attributes that should be hidden for serialization.
      *
@@ -30,7 +34,9 @@ class User extends Authenticatable
     protected $hidden = [
         'password',
         'remember_token',
+        'google2fa_secret',   // ⚠️ ne jamais exposer le secret TOTP au frontend
     ];
+
     /**
      * Get the attributes that should be cast.
      *
@@ -39,8 +45,15 @@ class User extends Authenticatable
     protected function casts(): array
     {
         return [
-            'email_verified_at' => 'datetime',
-            'password' => 'hashed',
+            'email_verified_at'      => 'datetime',
+            'password'               => 'hashed',
+            'google2fa_enabled'      => 'boolean',
+            'google2fa_confirmed_at' => 'datetime',
         ];
+    }
+
+    public function searchHistory()
+    {
+        return $this->hasMany(SearchHistory::class);
     }
 }

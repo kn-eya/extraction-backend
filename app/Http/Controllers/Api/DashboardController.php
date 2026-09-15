@@ -72,23 +72,39 @@ class DashboardController extends Controller
             ->limit(5000)
             ->get();
 
-$statsComplementaires = [
-    'avec_telephone' => Company::where('statut', 'actif')->whereNotNull('telephone')->where('telephone', '!=', '')->count(),
-    'sans_telephone' => Company::where('statut', 'actif')->where(function ($q) {
-        $q->whereNull('telephone')->orWhere('telephone', '');
-    })->count(),
-    'avec_email'    => Company::where('statut', 'actif')->whereNotNull('email')->where('email', '!=', '')->count(),
-    'sans_email'    => Company::where('statut', 'actif')->where(function ($q) {
-        $q->whereNull('email')->orWhere('email', '');
-    })->count(),
-    'avec_site_web' => Company::where('statut', 'actif')->whereNotNull('site_web')->where('site_web', '!=', '')->count(),
-    'sans_site_web' => Company::where('statut', 'actif')->where(function ($q) {
-        $q->whereNull('site_web')->orWhere('site_web', '');
-    })->count(),
-    'avec_horaires' => Company::where('statut', 'actif')->whereNotNull('horaires')->count(),
-    // 'taille_moyenne_employes' => null, // désactivé temporairement
-];        // 9. Stats complémentaires
-
+        // 9. Stats complémentaires
+        $statsComplementaires = [
+            'avec_telephone' => Company::where('statut', 'actif')
+                ->whereNotNull('telephone')
+                ->where('telephone', '!=', '')
+                ->count(),
+            'sans_telephone' => Company::where('statut', 'actif')
+                ->where(function ($q) {
+                    $q->whereNull('telephone')->orWhere('telephone', '');
+                })
+                ->count(),
+            'avec_email' => Company::where('statut', 'actif')
+                ->whereNotNull('email')
+                ->where('email', '!=', '')
+                ->count(),
+            'sans_email' => Company::where('statut', 'actif')
+                ->where(function ($q) {
+                    $q->whereNull('email')->orWhere('email', '');
+                })
+                ->count(),
+            'avec_site_web' => Company::where('statut', 'actif')
+                ->whereNotNull('site_web')
+                ->where('site_web', '!=', '')
+                ->count(),
+            'sans_site_web' => Company::where('statut', 'actif')
+                ->where(function ($q) {
+                    $q->whereNull('site_web')->orWhere('site_web', '');
+                })
+                ->count(),
+            'avec_horaires' => Company::where('statut', 'actif')
+                ->whereNotNull('horaires')
+                ->count(),
+        ];
 
         return response()->json([
             'success' => true,
@@ -102,26 +118,70 @@ $statsComplementaires = [
                 'nouveaux_contacts_7j' => $nouveauxContacts,
                 'cartes' => $cartes,
                 'stats_complementaires' => $statsComplementaires,
-            ]
+            ],
         ]);
     }
 
+    /**
+     * Statistiques avancées
+     * - entreprises par secteur
+     * - entreprises par province
+     * - avec/sans site
+     * - sans téléphone
+     * - sans email
+     */
     public function stats()
     {
+        $total = Company::where('statut', 'actif')->count();
+
+        // 1. Par secteur (top 20)
+        $parSecteur = Company::where('statut', 'actif')
+            ->whereNotNull('categorie')
+            ->select('categorie', DB::raw('count(*) as total'))
+            ->groupBy('categorie')
+            ->orderBy('total', 'desc')
+            ->limit(20)
+            ->get();
+
+        // 2. Par province
+        $parProvince = Company::where('statut', 'actif')
+            ->whereNotNull('province')
+            ->select('province', DB::raw('count(*) as total'))
+            ->groupBy('province')
+            ->orderBy('total', 'desc')
+            ->get();
+
+        // 3. Avec / sans site web
+        $avecSite = Company::where('statut', 'actif')
+            ->whereNotNull('site_web')
+            ->where('site_web', '!=', '')
+            ->count();
+        $sansSite = $total - $avecSite;
+
+        // 4. Sans téléphone
+        $sansTel = Company::where('statut', 'actif')
+            ->where(function ($q) {
+                $q->whereNull('telephone')->orWhere('telephone', '');
+            })
+            ->count();
+
+        // 5. Sans email
+        $sansEmail = Company::where('statut', 'actif')
+            ->where(function ($q) {
+                $q->whereNull('email')->orWhere('email', '');
+            })
+            ->count();
+
         return response()->json([
             'success' => true,
             'data' => [
-                'total' => Company::where('statut', 'actif')->count(),
-                'par_region' => Company::where('statut', 'actif')
-                    ->whereNotNull('region')
-                    ->selectRaw('region, count(*) as total')
-                    ->groupBy('region')
-                    ->get(),
-                'nouveaux_contacts' => Company::where('statut', 'actif')
-                    ->whereNotNull('email')
-                    ->where('email', '!=', '')
-                    ->where('date_import', '>=', now()->subDays(7))
-                    ->count(),
+                'total' => $total,
+                'par_secteur' => $parSecteur,
+                'par_province' => $parProvince,
+                'avec_site' => $avecSite,
+                'sans_site' => $sansSite,
+                'sans_telephone' => $sansTel,
+                'sans_email' => $sansEmail,
             ]
         ]);
     }

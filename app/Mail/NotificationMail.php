@@ -4,50 +4,29 @@ namespace App\Mail;
 
 use App\Models\AppNotification;
 use Illuminate\Bus\Queueable;
-use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Mail\Mailable;
-use Illuminate\Mail\Mailables\Attachment;
-use Illuminate\Mail\Mailables\Content;
-use Illuminate\Mail\Mailables\Envelope;
 use Illuminate\Queue\SerializesModels;
 
-class NotificationMail extends Mailable implements ShouldQueue
+class NotificationMail extends Mailable
 {
     use Queueable, SerializesModels;
 
-    /**
-     * Notification à envoyer par email.
-     */
-    public function __construct(
-        public AppNotification $notification
-    ) {
+    public AppNotification $notification;
+
+    public function __construct(AppNotification $notification)
+    {
+        $this->notification = $notification;
     }
 
-    /**
-     * Sujet de l'email.
-     */
-    public function envelope(): Envelope
+    public function build()
     {
-        return new Envelope(
-            subject: $this->notification->titre,
-        );
-    }
-
-    /**
-     * Contenu de l'email.
-     */
-    public function content(): Content
-    {
-        return new Content(
-            markdown: 'emails.notifications',
-        );
-    }
-
-    /**
-     * Pièces jointes.
-     */
-    public function attachments(): array
-    {
-        return [];
+         return $this->subject($this->notification->titre)
+                    ->view('emails.notifications')
+                    ->with([
+                        'titre'   => $this->notification->titre,
+                        'contenu' => $this->notification->message,
+                        'type'    => $this->notification->type,
+                        'date'    => $this->notification->created_at->format('d/m/Y H:i'),
+                    ]);
     }
 }

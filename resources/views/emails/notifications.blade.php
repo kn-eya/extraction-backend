@@ -1,12 +1,11 @@
-<x-mail::message>
-# {{ $notification->titre }}
-
-{{ $notification->message }}
-
-<x-mail::button :url="config('app.url')">
-Voir l'application
-</x-mail::button>
-
-Merci,<br>
-{{ config('app.name') }}
-</x-mail::message>
+<!DOCTYPE html>
+<html>
+<head>
+    <title>{{ $titre }}</title>
+</head>
+<body>
+    <h1>{{ $titre }}</h1>
+    <p>{{ $contenu }}</p>
+    <p><small>Type : {{ $type }} — {{ $date }}</small></p>
+</body>
+</html>

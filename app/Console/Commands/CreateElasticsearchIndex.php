@@ -33,7 +33,6 @@ class CreateElasticsearchIndex extends Command
                         'synonym_filter' => [
                             'type' => 'synonym',
                             'synonyms' => [
-                                // 🔥 LISTE DE SYNONYMES (Français / Néerlandais / Anglais)
                                 'avocat, lawyer, attorney',
                                 'boulangerie, bakkerij, bakery, bread',
                                 'restaurant, resto, eetgelegenheid',
@@ -71,6 +70,9 @@ class CreateElasticsearchIndex extends Command
                     'longitude'   => ['type' => 'float'],
                     'location'    => ['type' => 'geo_point'],
                     'date_import' => ['type' => 'date'],
+                    // Nouveaux champs pour "ouvert maintenant"
+                    'horaires'    => ['type' => 'text'],
+                    'est_ouvert'  => ['type' => 'boolean'],
                 ],
             ],
         ];

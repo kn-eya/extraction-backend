@@ -56,6 +56,9 @@ class IndexAllCompanies extends Command
             'longitude'   => (float) $c->longitude,
             'location'    => ['lat' => (float) $c->latitude, 'lon' => (float) $c->longitude],
             'date_import' => $c->date_import?->toISOString(),
+            // Nouveaux champs pour "ouvert maintenant"
+            'horaires'    => $c->horaires,
+            'est_ouvert'  => (bool) ($c->est_ouvert ?? false),
         ];
     }
 }
