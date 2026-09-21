@@ -81,3 +81,7 @@ _ide_helper_models.php
 Thumbs.db
 ehthumbs.db
 Desktop.ini
+test-*.txt
+*.dump
+*.sql.gz
+/backups

@@ -1,0 +1,381 @@
+{
+  "openapi": "3.0.0",
+  "info": {
+    "title": "Belgium Business Data Extractor API",
+    "version": "1.0.0",
+    "description": "API REST pour la recherche d'entreprises belges. Sources : OpenStreetMap (Overpass), Photon (Komoot), Elasticsearch.",
+    "contact": {
+      "name": "Aya",
+      "url": "https://github.com/kn-eya/extraction-backend"
+    },
+    "license": {
+      "name": "MIT",
+      "url": "https://opensource.org/licenses/MIT"
+    }
+  },
+  "servers": [
+    {
+      "url": "http://localhost/api",
+      "description": "Serveur de developpement local"
+    }
+  ],
+  "tags": [
+    { "name": "Auth", "description": "Authentification et 2FA" },
+    { "name": "Search", "description": "Recherche d'entreprises" },
+    { "name": "Companies", "description": "Gestion des entreprises" },
+    { "name": "Dashboard", "description": "Statistiques et dashboard" },
+    { "name": "Export", "description": "Export de donnees" },
+    { "name": "Notifications", "description": "Notifications utilisateur" }
+  ],
+  "paths": {
+    "/login": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Connexion utilisateur",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["email", "password"],
+                "properties": {
+                  "email": { "type": "string", "format": "email", "example": "admin@test.com" },
+                  "password": { "type": "string", "format": "password", "example": "password123" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Connexion reussie",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "user": { "type": "object" },
+                    "token": { "type": "string" },
+                    "roles": { "type": "array", "items": { "type": "string" } }
+                  }
+                }
+              }
+            }
+          },
+          "401": { "description": "Identifiants incorrects" },
+          "429": { "description": "Trop de tentatives" }
+        }
+      }
+    },
+    "/register": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Inscription",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "required": ["name", "email", "password", "password_confirmation"],
+                "properties": {
+                  "name": { "type": "string", "example": "Aya Test" },
+                  "email": { "type": "string", "format": "email" },
+                  "password": { "type": "string", "format": "password", "minLength": 8 },
+                  "password_confirmation": { "type": "string", "format": "password" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "201": { "description": "Utilisateur cree" }
+        }
+      }
+    },
+    "/logout": {
+      "post": {
+        "tags": ["Auth"],
+        "summary": "Deconnexion",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Deconnecte" }
+        }
+      }
+    },
+    "/user": {
+      "get": {
+        "tags": ["Auth"],
+        "summary": "Info utilisateur connecte",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Infos utilisateur" }
+        }
+      }
+    },
+    "/search/elasticsearch": {
+      "post": {
+        "tags": ["Search"],
+        "summary": "Recherche avancee d'entreprises",
+        "security": [{ "bearerAuth": [] }],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "query": { "type": "object" },
+                  "size": { "type": "integer", "example": 20 },
+                  "from": { "type": "integer", "example": 0 }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Resultats de recherche" }
+        }
+      }
+    },
+    "/companies/search": {
+      "get": {
+        "tags": ["Companies"],
+        "summary": "Recherche simple d'entreprises (filtres)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "description": "Mot-cle de recherche",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "categorie",
+            "in": "query",
+            "description": "Filtrer par categorie",
+            "required": false,
+            "schema": { "type": "string", "example": "Restaurant" }
+          },
+          {
+            "name": "ville",
+            "in": "query",
+            "description": "Filtrer par ville",
+            "required": false,
+            "schema": { "type": "string", "example": "Bruxelles" }
+          },
+          {
+            "name": "province",
+            "in": "query",
+            "description": "Filtrer par province",
+            "required": false,
+            "schema": { "type": "string", "example": "Bruxelles-Capitale" }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "description": "Filtrer par region",
+            "required": false,
+            "schema": { "type": "string", "enum": ["Wallonie", "Flandre", "Bruxelles-Capitale"] }
+          },
+          {
+            "name": "code_postal",
+            "in": "query",
+            "description": "Filtrer par code postal",
+            "required": false,
+            "schema": { "type": "string", "example": "1000" }
+          },
+          {
+            "name": "avec_telephone",
+            "in": "query",
+            "description": "Uniquement avec telephone",
+            "required": false,
+            "schema": { "type": "boolean" }
+          },
+          {
+            "name": "avec_email",
+            "in": "query",
+            "description": "Uniquement avec email",
+            "required": false,
+            "schema": { "type": "boolean" }
+          },
+          {
+            "name": "avec_site_web",
+            "in": "query",
+            "description": "Uniquement avec site web",
+            "required": false,
+            "schema": { "type": "boolean" }
+          },
+          {
+            "name": "per_page",
+            "in": "query",
+            "description": "Nombre de resultats par page",
+            "required": false,
+            "schema": { "type": "integer", "default": 20, "maximum": 100 }
+          },
+          {
+            "name": "page",
+            "in": "query",
+            "description": "Numero de page",
+            "required": false,
+            "schema": { "type": "integer", "default": 1 }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Liste des entreprises",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "data": { "type": "array", "items": { "type": "object" } },
+                    "total": { "type": "integer" },
+                    "per_page": { "type": "integer" },
+                    "current_page": { "type": "integer" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/companies/{id}": {
+      "get": {
+        "tags": ["Companies"],
+        "summary": "Details d'une entreprise",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID de l'entreprise",
+            "required": true,
+            "schema": { "type": "integer", "example": 1 }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Details de l'entreprise" },
+          "404": { "description": "Entreprise introuvable" }
+        }
+      }
+    },
+    "/companies/export": {
+      "get": {
+        "tags": ["Export"],
+        "summary": "Export des entreprises (CSV/Excel/JSON)",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "format",
+            "in": "query",
+            "description": "Format d'export",
+            "required": false,
+            "schema": { "type": "string", "enum": ["csv", "excel", "json"], "default": "csv" }
+          },
+          {
+            "name": "categorie",
+            "in": "query",
+            "description": "Filtrer par categorie",
+            "required": false,
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "region",
+            "in": "query",
+            "description": "Filtrer par region",
+            "required": false,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Fichier d'export",
+            "content": {
+              "application/octet-stream": {
+                "schema": { "type": "string", "format": "binary" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/dashboard": {
+      "get": {
+        "tags": ["Dashboard"],
+        "summary": "Statistiques du dashboard",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Statistiques" }
+        }
+      }
+    },
+    "/dashboard/stats": {
+      "get": {
+        "tags": ["Dashboard"],
+        "summary": "Statistiques detaillees (par ville, province, categorie)",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Statistiques detaillees",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "total_entreprises": { "type": "integer" },
+                    "par_ville": { "type": "array", "items": { "type": "object" } },
+                    "par_province": { "type": "array", "items": { "type": "object" } },
+                    "par_categorie": { "type": "array", "items": { "type": "object" } },
+                    "evolution_imports": { "type": "array", "items": { "type": "object" } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/notifications": {
+      "get": {
+        "tags": ["Notifications"],
+        "summary": "Liste des notifications",
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": { "description": "Liste des notifications" }
+        }
+      }
+    },
+    "/notifications/{id}/lue": {
+      "patch": {
+        "tags": ["Notifications"],
+        "summary": "Marquer une notification comme lue",
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "ID de la notification",
+            "required": true,
+            "schema": { "type": "integer" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Notification marquee comme lue" }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "bearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
+      }
+    }
+  }
+}

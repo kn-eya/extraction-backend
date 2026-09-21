@@ -8,6 +8,7 @@ use App\Models\Activity;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use PragmaRX\Google2FA\Google2FA;
@@ -37,10 +38,16 @@ class AuthController extends Controller
         ]);
 
         $user->assignRole('admin');
+        $user->load('roles'); // Eager loading après assignation
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        Activity::log('inscription', "Nouvel utilisateur : {$user->email}", ['user_id' => $user->id]);
+        // Activity log en afterResponse (non bloquant)
+        $this->logActivity(
+            'inscription',
+            "Nouvel utilisateur : {$user->email}",
+            ['user_id' => $user->id]
+        );
 
         return response()->json([
             'user' => $user,
@@ -51,19 +58,22 @@ class AuthController extends Controller
 
     /**
      * Log in an existing user.
-     *
-     * Si le 2FA est activé pour ce compte, aucun token final n'est délivré ici :
-     * on renvoie un temp_token de courte durée, à échanger contre le vrai token
-     * via POST /login/2fa/verify une fois le code TOTP saisi.
      */
     public function login(Request $request)
     {
+        $t0 = microtime(true);
+
         $validated = $request->validate([
             'email' => 'required|string|email',
             'password' => 'required|string',
         ]);
 
-        $user = User::where('email', $validated['email'])->first();
+        $t1 = microtime(true);
+
+        // ✅ Eager loading des rôles pour éviter les N+1
+        $user = User::with('roles')->where('email', $validated['email'])->first();
+
+        $t2 = microtime(true);
 
         if (! $user || ! Hash::check($validated['password'], $user->password)) {
             throw ValidationException::withMessages([
@@ -71,6 +81,9 @@ class AuthController extends Controller
             ]);
         }
 
+        $t3 = microtime(true);
+
+        // 2FA activé → on renvoie un temp_token
         if ($user->google2fa_enabled) {
             $tempToken = Str::random(64);
 
@@ -80,6 +93,13 @@ class AuthController extends Controller
                 now()->addMinutes(self::TWO_FACTOR_PENDING_TTL)
             );
 
+            $this->logTimings('login (2FA pending)', [
+                'validation' => $t1 - $t0,
+                'user_query' => $t2 - $t1,
+                'hash_check' => $t3 - $t2,
+                'total'      => microtime(true) - $t0,
+            ]);
+
             return response()->json([
                 'two_factor_required' => true,
                 'temp_token' => $tempToken,
@@ -87,8 +107,22 @@ class AuthController extends Controller
         }
 
         $token = $user->createToken('auth_token')->plainTextToken;
+        $t4 = microtime(true);
 
-        Activity::log('connexion', "Connexion de {$user->email}", ['user_id' => $user->id]);
+        // ✅ Activity log en afterResponse (non bloquant)
+        $this->logActivity(
+            'connexion',
+            "Connexion de {$user->email}",
+            ['user_id' => $user->id]
+        );
+
+        $this->logTimings('login', [
+            'validation'   => $t1 - $t0,
+            'user_query'   => $t2 - $t1,
+            'hash_check'   => $t3 - $t2,
+            'token_create' => $t4 - $t3,
+            'total'        => microtime(true) - $t0,
+        ]);
 
         return response()->json([
             'user' => $user,
@@ -99,10 +133,11 @@ class AuthController extends Controller
 
     /**
      * POST /login/2fa/verify
-     * Deuxième étape du login : vérifie le code TOTP et délivre le vrai token.
      */
     public function verifyTwoFactor(Request $request)
     {
+        $t0 = microtime(true);
+
         $validated = $request->validate([
             'temp_token' => 'required|string',
             'code' => 'required|string',
@@ -116,7 +151,8 @@ class AuthController extends Controller
             ]);
         }
 
-        $user = User::find($userId);
+        // ✅ Eager loading des rôles
+        $user = User::with('roles')->find($userId);
 
         if (! $user || ! $user->google2fa_enabled || ! $user->google2fa_secret) {
             Cache::forget("2fa_pending:{$validated['temp_token']}");
@@ -140,7 +176,15 @@ class AuthController extends Controller
 
         $token = $user->createToken('auth_token')->plainTextToken;
 
-        Activity::log('connexion', "Connexion de {$user->email} (2FA)", ['user_id' => $user->id]);
+        $this->logActivity(
+            'connexion',
+            "Connexion de {$user->email} (2FA)",
+            ['user_id' => $user->id]
+        );
+
+        $this->logTimings('login (2FA verify)', [
+            'total' => microtime(true) - $t0,
+        ]);
 
         return response()->json([
             'user' => $user,
@@ -150,7 +194,7 @@ class AuthController extends Controller
     }
 
     /**
-     * Log out the current user (revoke current token).
+     * Log out the current user.
      */
     public function logout(Request $request)
     {
@@ -162,9 +206,16 @@ class AuthController extends Controller
         }
 
         if ($user) {
-            Activity::log('déconnexion', "Déconnexion de {$user->email}", ['user_id' => $user->id]);
+            $this->logActivity(
+                'déconnexion',
+                "Déconnexion de {$user->email}",
+                ['user_id' => $user->id]
+            );
         } else {
-            Activity::log('déconnexion', 'Déconnexion d\'un utilisateur non identifié');
+            $this->logActivity(
+                'déconnexion',
+                "Déconnexion d'un utilisateur non identifié"
+            );
         }
 
         return response()->json([
@@ -177,11 +228,42 @@ class AuthController extends Controller
      */
     public function me(Request $request)
     {
-        $user = $request->user();
+        // ✅ Eager loading des rôles
+        $user = $request->user()->load('roles');
 
         return response()->json([
             'user' => $user,
             'roles' => $user->getRoleNames(),
         ]);
+    }
+
+    /**
+     * Enregistre une activité en afterResponse (non bloquant).
+     */
+    private function logActivity(string $type, string $message, array $context = []): void
+    {
+        dispatch(function () use ($type, $message, $context) {
+            try {
+                Activity::log($type, $message, $context);
+            } catch (\Throwable $e) {
+                Log::warning('Erreur Activity::log', [
+                    'type'    => $type,
+                    'message' => $e->getMessage(),
+                ]);
+            }
+        })->afterResponse();
+    }
+
+    /**
+     * Logue les temps d'exécution du login.
+     */
+    private function logTimings(string $label, array $timings): void
+    {
+        $formatted = [];
+        foreach ($timings as $key => $value) {
+            $formatted[$key] = round($value * 1000, 2) . 'ms';
+        }
+
+        Log::info("Login timings [{$label}]", $formatted);
     }
 }

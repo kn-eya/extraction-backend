@@ -10,9 +10,7 @@ use Illuminate\Support\Facades\Mail;
 
 class NotificationService
 {
-    // Passe à true pour envoyer en direct (debug), false pour utiliser la queue
-    protected bool $useQueue = false; // ← mets true pour tester sans worker
-
+   protected bool $useQueue = true;
     public function importTermine(string $message): void
     {
         $this->notifierAdmins('import_termine', '✅ Import terminé', $message);

@@ -59,7 +59,7 @@ class FillMissingCities extends Command
         foreach ($companies as $company) {
             try {
                 $response = Http::withHeaders([
-                        'User-Agent' => 'BelgiumBusinessExtractor/1.0 (contact: 3lmsolutions@gmail.com)',
+                        'User-Agent' => 'BelgiumBusinessExtractor/1.0 (+https://github.com/kn-eya/extraction-backend)',
                     ])
                     ->timeout(15)
                     ->get('https://photon.komoot.io/reverse', [

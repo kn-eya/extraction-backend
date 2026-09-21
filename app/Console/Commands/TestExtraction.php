@@ -183,7 +183,7 @@ Activity::log(
 
                 try {
                     $response = Http::withHeaders([
-                            'User-Agent' => 'BelgiumBusinessExtractor/1.0 (contact: 3lmsolutions@gmail.com)',
+                            'User-Agent' => 'BelgiumBusinessExtractor/1.0 (+https://github.com/kn-eya/extraction-backend)',
                             'Accept' => '*/*',
                         ])
                         ->asForm()
@@ -473,7 +473,7 @@ Activity::log(
     {
         try {
             $response = Http::withHeaders([
-                    'User-Agent' => 'BelgiumBusinessExtractor/1.0 (contact: 3lmsolutions@gmail.com)',
+                    'User-Agent' => 'BelgiumBusinessExtractor/1.0 (+https://github.com/kn-eya/extraction-backend)',
                     'Accept' => 'application/json',
                 ])
                 ->timeout(30)

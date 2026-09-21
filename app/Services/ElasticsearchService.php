@@ -2,31 +2,17 @@
 
 namespace App\Services;
 
-use Illuminate\Http\Client\RequestException;
-use Illuminate\Support\Facades\Http;
+use Elastic\Elasticsearch\Client;
 use Illuminate\Support\Facades\Log;
 
 class ElasticsearchService
 {
-    protected string $host;
-
     protected string $index;
 
-    protected int $timeout = 30;
-
-    protected int $connectTimeout = 5;
-
-    public function __construct()
-    {
-        $this->host = rtrim(
-            config('elasticsearch.hosts')[0] ?? 'elasticsearch:9200',
-            '/'
-        );
-
-        $this->index = config(
-            'elasticsearch.index',
-            'companies'
-        );
+    public function __construct(
+        protected Client $client
+    ) {
+        $this->index = config('elasticsearch.index', 'companies');
     }
 
     /**
@@ -40,23 +26,17 @@ class ElasticsearchService
             );
         }
 
-        $url = "http://{$this->host}/{$this->index}/_doc/{$document['id']}";
-
         try {
-            Http::connectTimeout($this->connectTimeout)
-                ->timeout($this->timeout)
-                ->acceptJson()
-                ->put($url, $document)
-                ->throw();
-        } catch (RequestException $e) {
-            Log::error(
-                'Erreur indexation Elasticsearch',
-                [
-                    'url' => $url,
-                    'message' => $e->getMessage(),
-                ]
-            );
-
+            $this->client->index([
+                'index' => $this->index,
+                'id'    => $document['id'],
+                'body'  => $document,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Erreur indexation Elasticsearch', [
+                'id'      => $document['id'],
+                'message' => $e->getMessage(),
+            ]);
             throw $e;
         }
     }
@@ -66,40 +46,22 @@ class ElasticsearchService
      */
     public function deleteDocument(string $id): void
     {
-        $url = "http://{$this->host}/{$this->index}/_doc/{$id}";
-
         try {
-            Http::connectTimeout($this->connectTimeout)
-                ->timeout($this->timeout)
-                ->acceptJson()
-                ->delete($url)
-                ->throw();
-        } catch (RequestException $e) {
-            Log::error(
-                'Erreur suppression Elasticsearch',
-                [
-                    'id' => $id,
-                    'url' => $url,
-                    'message' => $e->getMessage(),
-                ]
-            );
-
+            $this->client->delete([
+                'index' => $this->index,
+                'id'    => $id,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Erreur suppression Elasticsearch', [
+                'id'      => $id,
+                'message' => $e->getMessage(),
+            ]);
             throw $e;
         }
     }
 
     /**
      * Recherche Elasticsearch
-     *
-     * Le contrôleur peut fournir :
-     * - size
-     * - from
-     * - sort
-     * - query
-     * - _source
-     * - etc.
-     *
-     * Ces paramètres sont conservés.
      */
     public function search(
         array $params,
@@ -109,168 +71,49 @@ class ElasticsearchService
     ): array {
         $body = $params;
 
-        // =========================================================
-        // PAGINATION
-        // =========================================================
-
         if (!isset($body['size'])) {
             $body['size'] = $size;
         }
-
         if (!isset($body['from'])) {
             $body['from'] = $from;
         }
-
-        // =========================================================
-        // TRI
-        // =========================================================
-
         if (!isset($body['sort'])) {
-            $body['sort'] = $sort ?? [
-                '_score' => [
-                    'order' => 'desc'
-                ]
-            ];
+            $body['sort'] = $sort ?? ['_score' => ['order' => 'desc']];
         }
-
-        // =========================================================
-        // TOTAL DES RÉSULTATS
-        // =========================================================
-        //
-        // On évite un comptage exact inutile pour les très gros
-        // volumes.
-        //
-        // Elasticsearch retournera :
-        // - une valeur exacte jusqu'à 10000
-        // - relation "gte" au-delà.
-        //
-        // =========================================================
-
         if (!isset($body['track_total_hits'])) {
             $body['track_total_hits'] = 10000;
         }
 
-        // =========================================================
-        // URL
-        // =========================================================
-
-        $url =
-            "http://{$this->host}"
-            . "/{$this->index}"
-            . "/_search";
-
         try {
-
-            // =====================================================
-            // MESURE DU TEMPS HTTP
-            // =====================================================
-
             $start = microtime(true);
 
-            $response = Http::connectTimeout($this->connectTimeout)
-                ->timeout($this->timeout)
-                ->acceptJson()
-                ->post($url, $body);
+            // ⚠️ En v8, la réponse est un objet Response, il faut ->asArray()
+            $response = $this->client->search([
+                'index' => $this->index,
+                'body'  => $body,
+            ]);
 
             $duration = microtime(true) - $start;
 
-            Log::info(
-                'Elasticsearch HTTP',
-                [
-                    'duration_seconds' =>
-                        round($duration, 4),
+            $data = $response->asArray();
 
-                    'status' =>
-                        $response->status(),
-
-                    'index' =>
-                        $this->index,
-                ]
-            );
-
-            // =====================================================
-            // ERREUR HTTP
-            // =====================================================
-
-            $response->throw();
-
-            $data = $response->json();
-
-            // =====================================================
-            // VÉRIFICATION DE LA RÉPONSE
-            // =====================================================
-
-            if (!is_array($data)) {
-                Log::error(
-                    'Réponse Elasticsearch invalide',
-                    [
-                        'response' => $response->body()
-                    ]
-                );
-
-                return [
-                    'hits' => [
-                        'hits' => [],
-                        'total' => [
-                            'value' => 0
-                        ],
-                    ],
-                    'took' => 0,
-                ];
-            }
-
-            // =====================================================
-            // LOG DU TEMPS INTERNE ELASTICSEARCH
-            // =====================================================
-
-            if (isset($data['took'])) {
-                Log::info(
-                    'Elasticsearch took',
-                    [
-                        'milliseconds' => $data['took']
-                    ]
-                );
-            }
+            Log::info('Elasticsearch HTTP', [
+                'duration_seconds' => round($duration, 4),
+                'took_ms'          => $data['took'] ?? null,
+                'index'            => $this->index,
+            ]);
 
             return $data;
 
-        } catch (RequestException $e) {
-
-            Log::error(
-                'Elasticsearch search failed',
-                [
-                    'url' => $url,
-                    'message' => $e->getMessage(),
-                    'status' => $e->response?->status(),
-                    'response' => $e->response?->body(),
-                ]
-            );
-
-            return [
-                'hits' => [
-                    'hits' => [],
-                    'total' => [
-                        'value' => 0
-                    ],
-                ],
-                'took' => 0,
-            ];
         } catch (\Throwable $e) {
-
-            Log::error(
-                'Erreur inattendue Elasticsearch',
-                [
-                    'url' => $url,
-                    'message' => $e->getMessage(),
-                ]
-            );
+            Log::error('Elasticsearch search failed', [
+                'message' => $e->getMessage(),
+            ]);
 
             return [
                 'hits' => [
-                    'hits' => [],
-                    'total' => [
-                        'value' => 0
-                    ],
+                    'hits'  => [],
+                    'total' => ['value' => 0],
                 ],
                 'took' => 0,
             ];
@@ -282,28 +125,22 @@ class ElasticsearchService
      */
     public function createIndex(array $mapping): void
     {
-        $url =
-            "http://{$this->host}"
-            . "/{$this->index}";
-
         try {
+            $exists = $this->client->indices()->exists(['index' => $this->index]);
 
-            Http::connectTimeout($this->connectTimeout)
-                ->timeout($this->timeout)
-                ->acceptJson()
-                ->put($url, $mapping)
-                ->throw();
+            if ($exists->asBool()) {
+                $this->client->indices()->delete(['index' => $this->index]);
+            }
 
-        } catch (RequestException $e) {
-
-            Log::error(
-                'Erreur création index Elasticsearch',
-                [
-                    'index' => $this->index,
-                    'message' => $e->getMessage(),
-                ]
-            );
-
+            $this->client->indices()->create([
+                'index' => $this->index,
+                'body'  => $mapping,
+            ]);
+        } catch (\Throwable $e) {
+            Log::error('Erreur création index Elasticsearch', [
+                'index'   => $this->index,
+                'message' => $e->getMessage(),
+            ]);
             throw $e;
         }
     }
@@ -313,28 +150,13 @@ class ElasticsearchService
      */
     public function deleteIndex(): void
     {
-        $url =
-            "http://{$this->host}"
-            . "/{$this->index}";
-
         try {
-
-            Http::connectTimeout($this->connectTimeout)
-                ->timeout($this->timeout)
-                ->acceptJson()
-                ->delete($url)
-                ->throw();
-
-        } catch (RequestException $e) {
-
-            Log::error(
-                'Erreur suppression index Elasticsearch',
-                [
-                    'index' => $this->index,
-                    'message' => $e->getMessage(),
-                ]
-            );
-
+            $this->client->indices()->delete(['index' => $this->index]);
+        } catch (\Throwable $e) {
+            Log::error('Erreur suppression index Elasticsearch', [
+                'index'   => $this->index,
+                'message' => $e->getMessage(),
+            ]);
             throw $e;
         }
     }
@@ -344,30 +166,44 @@ class ElasticsearchService
      */
     public function indexExists(): bool
     {
-        $url =
-            "http://{$this->host}"
-            . "/{$this->index}";
+        try {
+            $response = $this->client->indices()->exists(['index' => $this->index]);
+            return $response->asBool();
+        } catch (\Throwable $e) {
+            Log::warning('Impossible de vérifier l’existence de l’index', [
+                'index'   => $this->index,
+                'message' => $e->getMessage(),
+            ]);
+            return false;
+        }
+    }
+
+    /**
+     * Bulk index (pour l'indexation massive)
+     */
+    public function bulkIndex(array $documents): array
+    {
+        $params = ['body' => []];
+
+        foreach ($documents as $doc) {
+            $params['body'][] = [
+                'index' => [
+                    '_index' => $this->index,
+                    '_id'    => $doc['id'],
+                ],
+            ];
+            $params['body'][] = $doc;
+        }
 
         try {
-
-            $response = Http::connectTimeout($this->connectTimeout)
-                ->timeout($this->timeout)
-                ->acceptJson()
-                ->head($url);
-
-            return $response->successful();
-
+            $response = $this->client->bulk($params);
+            return $response->asArray();
         } catch (\Throwable $e) {
-
-            Log::warning(
-                'Impossible de vérifier l’existence de l’index Elasticsearch',
-                [
-                    'index' => $this->index,
-                    'message' => $e->getMessage(),
-                ]
-            );
-
-            return false;
+            Log::error('Erreur bulk index Elasticsearch', [
+                'count'   => count($documents),
+                'message' => $e->getMessage(),
+            ]);
+            throw $e;
         }
     }
 }
